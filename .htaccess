@@ -1,0 +1,74 @@
+# ============================================================
+#  Archiven — .htaccess racine (Apache / LiteSpeed O2Switch)
+#  URLs propres (sans index.php) + protections de base.
+# ============================================================
+
+# Empêche le listing des répertoires.
+Options -Indexes
+
+# Fichier servi par défaut pour un dossier.
+DirectoryIndex index.php
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # Certains hébergeurs (et LiteSpeed) exigent +SymLinksIfOwnerMatch.
+    Options +SymLinksIfOwnerMatch
+
+    # Pas de RewriteBase : la réécriture est relative au dossier du .htaccess,
+    # donc portable — fonctionne en sous-dossier (/Archiven/ en local) comme
+    # à la racine du domaine/sous-domaine (O2Switch) sans modification.
+
+    # Bloque l'accès direct aux dossiers sensibles de l'application.
+    RewriteRule ^(application|system)/ - [F,L]
+
+    # Ne réécrit pas les fichiers/dossiers réels (uploads, assets, etc.).
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+
+    # Tout le reste passe par le front controller CodeIgniter.
+    # Forme "index.php?/$1" : la plus compatible (LiteSpeed/Apache mutualisé).
+    RewriteRule ^(.*)$ index.php?/$1 [L]
+</IfModule>
+
+# Repli si mod_rewrite est absent : on dirige vers le front controller.
+<IfModule !mod_rewrite.c>
+    ErrorDocument 404 /index.php
+</IfModule>
+
+# Refuse l'accès aux fichiers cachés et de config.
+<FilesMatch "^\.|\.(sql|md|ini)$">
+    Require all denied
+</FilesMatch>
+
+# ============================================================
+#  En-têtes de sécurité HTTP
+#  (Le flag Secure des cookies est géré côté PHP : config.php
+#   cookie_secure = production. La redirection HTTPS se fait
+#   côté Cloudflare — voir « Always Use HTTPS » — pour éviter
+#   toute boucle de redirection derrière le proxy.)
+# ============================================================
+<IfModule mod_headers.c>
+    # Force HTTPS pendant 180 jours (le navigateur refuse le HTTP ensuite).
+    Header always set Strict-Transport-Security "max-age=15552000"
+    # Empêche le navigateur de « deviner » un type MIME (anti-sniffing).
+    Header always set X-Content-Type-Options "nosniff"
+    # Interdit l'affichage du site dans une iframe d'un autre domaine (anti-clickjacking).
+    Header always set X-Frame-Options "SAMEORIGIN"
+    # Ne divulgue l'URL de provenance qu'en interne / vers HTTPS.
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    # Réduit les API navigateur accessibles (aucune géoloc / micro / caméra requise).
+    Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+
+    # --- Content-Security-Policy ---------------------------------------
+    #  À ACTIVER APRÈS TEST : décommentez la ligne ci-dessous, puis parcourez
+    #  landing / galerie / admin / IMPORT (upload R2) / QR, console ouverte
+    #  (F12). Si un chargement est bloqué, ajoutez l'hôte à la directive
+    #  concernée. Les sources ci-dessous couvrent les besoins connus :
+    #    fonts.googleapis / fonts.gstatic  = polices Google
+    #    cdn.archivents.com                = images/vidéos servies par le CDN
+    #    *.r2.cloudflarestorage.com        = upload direct des photos/vidéos (PUT présigné)
+    #    images.unsplash.com               = visuels de la landing
+    #
+    # Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://cdn.archivents.com https://images.unsplash.com; media-src 'self' https://cdn.archivents.com; connect-src 'self' https://cdn.archivents.com https://*.r2.cloudflarestorage.com; frame-ancestors 'self'; base-uri 'self'; object-src 'none'"
+</IfModule>
